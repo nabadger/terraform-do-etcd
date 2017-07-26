@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+#Setup terraform envvars
+# Usage:
+#	. ./setup_terraform.sh
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+echo -n "Enter your digital-ocean token: "
+read do_token
+
+echo "Writing $do_token to ./secrets/DO_TOKEN"
+echo "$do_token" > "$DIR/.secrets/DO_TOKEN"
+
+echo -n "Enter path to digital-ocean public key: "
+read do_public_key
+
+echo -n "Enter path to digital-ocean private key: "
+read do_private_key
+
+export TF_VAR_do_token=$(cat $DIR/.secrets/DO_TOKEN)
+export TF_VAR_ssh_private_key=${do_private_key}
+
+function get_ssh_version {
+    # ssh -V prints to stderr, redirect
+    ssh_ver=$(ssh -V 2>&1)
+    [[ -n $ZSH_VERSION ]] && setopt LOCAL_OPTIONS KSH_ARRAYS BASH_REMATCH
+    [[ $ssh_ver =~ OpenSSH_([0-9][.][0-9]) ]] && echo "${BASH_REMATCH[1]}"
+}
+
+# if ssh version is under 6.9, use -lf, otherwise must use the -E version
+if ! awk -v ver="$(get_ssh_version)" 'BEGIN { if (ver < 6.9) exit 1; }'; then
+    export TF_VAR_ssh_fingerprint=$(ssh-keygen -lf ${do_public_key} awk '{print $2}')
+else
+    export TF_VAR_ssh_fingerprint=$(ssh-keygen -E MD5 -lf ${do_public_key} | awk '{print $2}' | sed 's/MD5://g')
+fi
